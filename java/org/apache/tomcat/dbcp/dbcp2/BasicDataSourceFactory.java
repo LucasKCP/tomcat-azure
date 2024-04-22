@@ -56,6 +56,9 @@ import org.apache.tomcat.dbcp.pool2.impl.GenericObjectPoolConfig;
  */
 public class BasicDataSourceFactory implements ObjectFactory {
 
+    //string to store password in class variable so that only need to get connection from AKV one time
+    private String pwSecret = "";
+
     private static final Log log = LogFactory.getLog(BasicDataSourceFactory.class);
 
     private static final String PROP_DEFAULT_AUTO_COMMIT = "defaultAutoCommit";
@@ -83,6 +86,12 @@ public class BasicDataSourceFactory implements ObjectFactory {
     private static final String PROP_PASSWORD = "password";
     private static final String PROP_URL = "url";
     private static final String PROP_USER_NAME = "username";
+    private static final String PROP_CLIENT_SECRET = "clientSecret";
+    private static final String PROP_TENANT_ID = "tenantId";
+    private static final String PROP_CLIENT_ID = "clientId";
+    private static final String PROP_VAULT_URL = "vaultUrl";
+    private static final String PROP_SECRET_NAME = "secretName";
+    private static final String PROP_IS_AKV = "isAkv"; //AKV is for azure key vault
     private static final String PROP_VALIDATION_QUERY = "validationQuery";
     private static final String PROP_VALIDATION_QUERY_TIMEOUT = "validationQueryTimeout";
     private static final String PROP_JMX_NAME = "jmxName";
@@ -132,19 +141,19 @@ public class BasicDataSourceFactory implements ObjectFactory {
     private static final String SILENT_PROP_AUTH = "auth";
 
     private static final String[] ALL_PROPERTIES = {PROP_DEFAULT_AUTO_COMMIT, PROP_DEFAULT_READ_ONLY,
-            PROP_DEFAULT_TRANSACTION_ISOLATION, PROP_DEFAULT_CATALOG, PROP_DEFAULT_SCHEMA, PROP_CACHE_STATE,
-            PROP_DRIVER_CLASS_NAME, PROP_LIFO, PROP_MAX_TOTAL, PROP_MAX_IDLE, PROP_MIN_IDLE, PROP_INITIAL_SIZE,
-            PROP_MAX_WAIT_MILLIS, PROP_TEST_ON_CREATE, PROP_TEST_ON_BORROW, PROP_TEST_ON_RETURN,
-            PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS, PROP_NUM_TESTS_PER_EVICTION_RUN, PROP_MIN_EVICTABLE_IDLE_TIME_MILLIS,
-            PROP_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS, PROP_EVICTION_POLICY_CLASS_NAME, PROP_TEST_WHILE_IDLE, PROP_PASSWORD,
-            PROP_URL, PROP_USER_NAME, PROP_VALIDATION_QUERY, PROP_VALIDATION_QUERY_TIMEOUT, PROP_CONNECTION_INIT_SQLS,
-            PROP_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED, PROP_REMOVE_ABANDONED_ON_BORROW, PROP_REMOVE_ABANDONED_ON_MAINTENANCE,
-            PROP_REMOVE_ABANDONED_TIMEOUT, PROP_LOG_ABANDONED, PROP_ABANDONED_USAGE_TRACKING, PROP_POOL_PREPARED_STATEMENTS,
-            PROP_CLEAR_STATEMENT_POOL_ON_RETURN,
-            PROP_MAX_OPEN_PREPARED_STATEMENTS, PROP_CONNECTION_PROPERTIES, PROP_MAX_CONN_LIFETIME_MILLIS,
-            PROP_LOG_EXPIRED_CONNECTIONS, PROP_ROLLBACK_ON_RETURN, PROP_ENABLE_AUTO_COMMIT_ON_RETURN,
-            PROP_DEFAULT_QUERY_TIMEOUT, PROP_FAST_FAIL_VALIDATION, PROP_DISCONNECTION_SQL_CODES, PROP_JMX_NAME,
-            PROP_CONNECTION_FACTORY_CLASS_NAME };
+        PROP_DEFAULT_TRANSACTION_ISOLATION, PROP_DEFAULT_CATALOG, PROP_DEFAULT_SCHEMA, PROP_CACHE_STATE,
+        PROP_DRIVER_CLASS_NAME, PROP_LIFO, PROP_MAX_TOTAL, PROP_MAX_IDLE, PROP_MIN_IDLE, PROP_INITIAL_SIZE,
+        PROP_MAX_WAIT_MILLIS, PROP_TEST_ON_CREATE, PROP_TEST_ON_BORROW, PROP_TEST_ON_RETURN,
+        PROP_TIME_BETWEEN_EVICTION_RUNS_MILLIS, PROP_NUM_TESTS_PER_EVICTION_RUN, PROP_MIN_EVICTABLE_IDLE_TIME_MILLIS,
+        PROP_SOFT_MIN_EVICTABLE_IDLE_TIME_MILLIS, PROP_EVICTION_POLICY_CLASS_NAME, PROP_TEST_WHILE_IDLE, PROP_PASSWORD,
+        PROP_URL, PROP_USER_NAME, PROP_CLIENT_ID, PROP_VAULT_URL, PROP_SECRET_NAME, PROP_TENANT_ID, PROP_CLIENT_SECRET, PROP_VALIDATION_QUERY,
+        PROP_VALIDATION_QUERY_TIMEOUT, PROP_CONNECTION_INIT_SQLS, PROP_ACCESS_TO_UNDERLYING_CONNECTION_ALLOWED,
+        PROP_REMOVE_ABANDONED_ON_BORROW, PROP_REMOVE_ABANDONED_ON_MAINTENANCE, PROP_REMOVE_ABANDONED_TIMEOUT,
+        PROP_LOG_ABANDONED, PROP_ABANDONED_USAGE_TRACKING, PROP_POOL_PREPARED_STATEMENTS, PROP_CLEAR_STATEMENT_POOL_ON_RETURN,
+        PROP_MAX_OPEN_PREPARED_STATEMENTS, PROP_CONNECTION_PROPERTIES, PROP_MAX_CONN_LIFETIME_MILLIS,
+        PROP_LOG_EXPIRED_CONNECTIONS, PROP_ROLLBACK_ON_RETURN, PROP_ENABLE_AUTO_COMMIT_ON_RETURN,
+        PROP_DEFAULT_QUERY_TIMEOUT, PROP_FAST_FAIL_VALIDATION, PROP_DISCONNECTION_SQL_CODES, PROP_JMX_NAME,
+        PROP_CONNECTION_FACTORY_CLASS_NAME};
 
     /**
      * Obsolete properties from DBCP 1.x. with warning strings suggesting new properties. LinkedHashMap will guarantee
@@ -154,16 +163,16 @@ public class BasicDataSourceFactory implements ObjectFactory {
 
     static {
         NUPROP_WARNTEXT.put(NUPROP_MAX_ACTIVE,
-                "Property " + NUPROP_MAX_ACTIVE + " is not used in DBCP2, use " + PROP_MAX_TOTAL + " instead. "
-                        + PROP_MAX_TOTAL + " default value is " + GenericObjectPoolConfig.DEFAULT_MAX_TOTAL + ".");
+            "Property " + NUPROP_MAX_ACTIVE + " is not used in DBCP2, use " + PROP_MAX_TOTAL + " instead. "
+                + PROP_MAX_TOTAL + " default value is " + GenericObjectPoolConfig.DEFAULT_MAX_TOTAL + ".");
         NUPROP_WARNTEXT.put(NUPROP_REMOVE_ABANDONED,
-                "Property " + NUPROP_REMOVE_ABANDONED + " is not used in DBCP2," + " use one or both of "
-                        + PROP_REMOVE_ABANDONED_ON_BORROW + " or " + PROP_REMOVE_ABANDONED_ON_MAINTENANCE + " instead. "
-                        + "Both have default value set to false.");
+            "Property " + NUPROP_REMOVE_ABANDONED + " is not used in DBCP2," + " use one or both of "
+                + PROP_REMOVE_ABANDONED_ON_BORROW + " or " + PROP_REMOVE_ABANDONED_ON_MAINTENANCE + " instead. "
+                + "Both have default value set to false.");
         NUPROP_WARNTEXT.put(NUPROP_MAXWAIT,
-                "Property " + NUPROP_MAXWAIT + " is not used in DBCP2" + " , use " + PROP_MAX_WAIT_MILLIS + " instead. "
-                        + PROP_MAX_WAIT_MILLIS + " default value is " + BaseObjectPoolConfig.DEFAULT_MAX_WAIT_MILLIS
-                        + ".");
+            "Property " + NUPROP_MAXWAIT + " is not used in DBCP2" + " , use " + PROP_MAX_WAIT_MILLIS + " instead. "
+                + PROP_MAX_WAIT_MILLIS + " default value is " + BaseObjectPoolConfig.DEFAULT_MAX_WAIT_MILLIS
+                + ".");
     }
 
     /**
@@ -188,23 +197,17 @@ public class BasicDataSourceFactory implements ObjectFactory {
      * <code>null</code> instead.
      * </p>
      *
-     * @param obj
-     *            The possibly null object containing location or reference information that can be used in creating an
-     *            object
-     * @param name
-     *            The name of this object relative to <code>nameCtx</code>
-     * @param nameCtx
-     *            The context relative to which the <code>name</code> parameter is specified, or <code>null</code> if
-     *            <code>name</code> is relative to the default initial context
-     * @param environment
-     *            The possibly null environment that is used in creating this object
-     *
-     * @throws Exception
-     *             if an exception occurs creating the instance
+     * @param obj         The possibly null object containing location or reference information that can be used in creating an
+     *                    object
+     * @param name        The name of this object relative to <code>nameCtx</code>
+     * @param nameCtx     The context relative to which the <code>name</code> parameter is specified, or <code>null</code> if
+     *                    <code>name</code> is relative to the default initial context
+     * @param environment The possibly null environment that is used in creating this object
+     * @throws Exception if an exception occurs creating the instance
      */
     @Override
     public Object getObjectInstance(final Object obj, final Name name, final Context nameCtx,
-            final Hashtable<?, ?> environment) throws Exception {
+                                    final Hashtable<?, ?> environment) throws Exception {
 
         // We only know how to deal with <code>javax.naming.Reference</code>s
         // that specify a class name of "javax.sql.DataSource"
@@ -243,17 +246,13 @@ public class BasicDataSourceFactory implements ObjectFactory {
      * Collects warnings and info messages. Warnings are generated when an obsolete property is set. Unknown properties
      * generate info messages.
      *
-     * @param ref
-     *            Reference to check properties of
-     * @param name
-     *            Name provided to getObject
-     * @param warnings
-     *            container for warning messages
-     * @param infoMessages
-     *            container for info messages
+     * @param ref          Reference to check properties of
+     * @param name         Name provided to getObject
+     * @param warnings     container for warning messages
+     * @param infoMessages container for info messages
      */
     private void validatePropertyNames(final Reference ref, final Name name, final List<String> warnings,
-            final List<String> infoMessages) {
+                                       final List<String> infoMessages) {
         final List<String> allPropsAsList = Arrays.asList(ALL_PROPERTIES);
         final String nameString = name != null ? "Name = " + name.toString() + " " : "";
         if (NUPROP_WARNTEXT != null && !NUPROP_WARNTEXT.isEmpty()) {
@@ -263,8 +262,8 @@ public class BasicDataSourceFactory implements ObjectFactory {
                     final StringBuilder stringBuilder = new StringBuilder(nameString);
                     final String propertyValue = ra.getContent().toString();
                     stringBuilder.append(NUPROP_WARNTEXT.get(propertyName)).append(" You have set value of \"")
-                            .append(propertyValue).append("\" for \"").append(propertyName)
-                            .append("\" property, which is being ignored.");
+                        .append(propertyValue).append("\" for \"").append(propertyName)
+                        .append("\" property, which is being ignored.");
                     warnings.add(stringBuilder.toString());
                 }
             }
@@ -277,11 +276,11 @@ public class BasicDataSourceFactory implements ObjectFactory {
             // If property name is not in the properties list, we haven't warned on it
             // and it is not in the "silent" list, tell user we are ignoring it.
             if (!(allPropsAsList.contains(propertyName) || NUPROP_WARNTEXT.containsKey(propertyName)
-                    || SILENT_PROPERTIES.contains(propertyName))) {
+                || SILENT_PROPERTIES.contains(propertyName))) {
                 final String propertyValue = ra.getContent().toString();
                 final StringBuilder stringBuilder = new StringBuilder(nameString);
                 stringBuilder.append("Ignoring unknown property: ").append("value of \"").append(propertyValue)
-                        .append("\" for \"").append(propertyName).append("\" property");
+                    .append("\" for \"").append(propertyName).append("\" property");
                 infoMessages.add(stringBuilder.toString());
             }
         }
@@ -290,11 +289,9 @@ public class BasicDataSourceFactory implements ObjectFactory {
     /**
      * Creates and configures a {@link BasicDataSource} instance based on the given properties.
      *
-     * @param properties
-     *            The data source configuration properties.
+     * @param properties The data source configuration properties.
      * @return A new a {@link BasicDataSource} instance based on the given properties.
-     * @throws Exception
-     *             Thrown when an error occurs creating the data source.
+     * @throws Exception Thrown when an error occurs creating the data source.
      */
     public static BasicDataSource createDataSource(final Properties properties) throws Exception {
         final BasicDataSource dataSource = new BasicDataSource();
@@ -559,6 +556,33 @@ public class BasicDataSourceFactory implements ObjectFactory {
             dataSource.setConnectionFactoryClassName(value);
         }
 
+        boolean fromAkv = isEmpty(properties.getProperty(PROP_IS_AKV)) ? false : true;
+        String clientId = properties.getProperty(PROP_CLIENT_ID);
+        String tenantId = properties.getProperty(PROP_TENANT_ID);
+        String clientSecret = properties.getProperty(PROP_CLIENT_SECRET);
+        String vaultUrl = properties.getProperty(PROP_VAULT_URL);
+        String secretName = properties.getProperty(PROP_SECRET_NAME);
+
+
+        if (fromAkv) {
+            log.info("Getting credential from AKV...");
+
+            log.info("Client ID present : {}", isNotEmpty(clientId));
+            log.info("Tenant ID present : {}", isNotEmpty(tenantId));
+            log.info("Client secret present : {}", isNotEmpty(clientSecret));
+            log.info("Vault url present : {}", isNotEmpty(vaultUrl));
+            log.info("Secret name present : {}", isNotEmpty(secretName));
+            //do get client password from here one time one, try to get password for only once
+            if (isNotEmpty(clientId) && isNotEmpty(tenantId) && isNotEmpty(vaultUrl) && isNotEmpty(secretName) && isNotEmpty(clientSecret)) {
+                log.info("Setting datasource password...");
+                String pwFromAkv = getPwFromAkv(vaultUrl, clientId, tenantId, clientSecret, secretName);
+                dataSource.setPassword(pwFromAkv);
+            }
+
+        } else {
+            log.info("Not getting credential from AKV...")
+        }
+
         // DBCP-215
         // Trick to make sure that initialSize connections are created
         if (dataSource.getInitialSize() > 0) {
@@ -587,10 +611,8 @@ public class BasicDataSourceFactory implements ObjectFactory {
     /**
      * Parse list of property values from a delimited string
      *
-     * @param value
-     *            delimited list of values
-     * @param delimiter
-     *            character used to separate values in the list
+     * @param value     delimited list of values
+     * @param delimiter character used to separate values in the list
      * @return String Collection of values
      */
     private static Collection<String> parseList(final String value, final char delimiter) {
@@ -600,5 +622,34 @@ public class BasicDataSourceFactory implements ObjectFactory {
             tokens.add(tokenizer.nextToken());
         }
         return tokens;
+    }
+
+    public boolean isEmpty(CharSequence cs) {
+        return cs == null || cs.length() == 0;
+    }
+
+    public boolean isNotEmpty(CharSequence cs) {
+        return !isEmpty(cs);
+    }
+
+    public String getPwFromAkv(String vaultUrl, String clientId, String tenantId, String clientSecret, String secretName) {
+        if (isEmpty(pwSecret)) {
+            log.info("Getting password from AKV...");
+            log.info("PwSecret is : {}", pwSecret);
+            SecretClient client = new SecretClientBuilder()
+                .vaultUrl(vaultUrl)
+                .credential(new ClientSecretCredentialBuilder()
+                    .tenantId(tenantId)
+                    .clientId(clientId)
+                    .clientSecret(clientSecret)
+                    .build())
+                .buildClient();
+            log.info("Setting password from AKV...");
+            pwSecret = client.getSecret(secretName);
+            log.info("PwSecret is : {}", pwSecret);
+            log.info("Setting done...");
+        }
+
+        return pwSecret;
     }
 }
